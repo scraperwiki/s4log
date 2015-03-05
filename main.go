@@ -27,7 +27,6 @@ func Stream(args []string) (in io.Reader, wait func()) {
 			// TODO(pwaller): Better handling
 			log.Println("Command had an error:", err)
 		}
-		log.Println("Cmd quit")
 	}
 }
 
@@ -43,7 +42,10 @@ func Commit(buf []byte) {
 
 	// Commence a copy to permanent storage on the fresh buffer
 	log.Printf("Commit %d bytes", len(buf))
+	n += len(buf)
 }
+
+var n int
 
 func main() {
 
@@ -70,6 +72,7 @@ func main() {
 		// TODO: Use a read deadline to ensure that the commit deadline has
 		// a chance.
 		n, err := in.Read(p)
+		// log.Println("Read", n, err)
 		if err != nil {
 			return err
 		}
@@ -88,7 +91,10 @@ func main() {
 		mu.Lock()
 		defer mu.Unlock()
 
+		deadliner.Met()
+
 		Commit(buf[:len(buf)-len(p)])
+		p = buf
 	}
 
 	go func() {
@@ -105,7 +111,10 @@ func main() {
 		for {
 			err := fill(pollFD)
 			switch err {
-			case nil, poller.ErrTimeout:
+			case nil:
+				continue
+			case poller.ErrTimeout:
+				deadliner.Wait()
 				continue
 			case io.EOF:
 				log.Println("EOF")
@@ -118,6 +127,10 @@ func main() {
 	}()
 
 	defer func() {
+		log.Println("Total bytes", n)
+	}()
+
+	defer func() {
 		log.Println("Final commit")
 		commit()
 	}()
@@ -125,15 +138,11 @@ func main() {
 	for {
 		select {
 		case <-time.After(deadliner.Until()):
-			log.Println("Deadline")
 		case <-done:
-			log.Println("Done")
 			return
 		}
 
-		deadliner.Met()
-
-		log.Println("Commit")
+		log.Println("Deadline commit")
 		commit()
 	}
 
