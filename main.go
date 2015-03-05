@@ -10,7 +10,6 @@ import (
 )
 
 func Stream(args []string) io.Reader {
-	log.Println("Invoke", args)
 	cmd := exec.Command(args[0], args[1:]...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -47,65 +46,76 @@ func Commit(buf []byte) {
 func main() {
 
 	const (
-		Frequency  = 2 * time.Second // Minimum frequency before committing
+		Frequency  = 2 * time.Second // Maximum time between commits
 		BufferSize = 1024            // Size of buffer before flushing
 	)
 
 	var (
 		mu   sync.Mutex
-		done bool
+		done = make(chan struct{})
 	)
+
 	buf := make([]byte, BufferSize)
 	p := buf
 
+	fill := func(in io.Reader) error {
+		mu.Lock()
+		defer mu.Unlock()
+
+		// TODO: Use a read deadline to ensure that the commit deadline has
+		// a chance.
+		n, err := in.Read(p)
+		if err != nil {
+			return err
+		}
+		if len(p[n:]) == 0 {
+			// Buffer is full!
+			Commit(buf)
+			p = buf
+		} else {
+			// Advance p
+			p = p[n:]
+		}
+		return nil
+	}
+
+	commit := func() {
+		mu.Lock()
+		defer mu.Unlock()
+
+		Commit(buf[:len(buf)-len(p)])
+	}
+
 	go func() {
 		in := Stream(os.Args[1:])
-
-		Fill := func() {
-			// TODO: Handle buffer full
-			// TODO: Ensure there is a read deadline
-			n, err := in.Read(p)
-			if err != nil {
-				done = true
-				return
-			}
-			if len(p[n:]) == 0 {
-				// Buffer is full!
-				log.Println("Buffer filled")
-				Commit(buf)
-				p = buf
-			} else {
-				// Advance p
-				p = p[n:]
-			}
-		}
-
 		for {
-			mu.Lock()
-			Fill()
-			if done {
-				mu.Unlock()
+			err := fill(in)
+			if err != nil {
+				close(done)
 				return
 			}
-			mu.Unlock()
 		}
 	}()
 
 	getNextDeadline := func() time.Time { return time.Now().Add(Frequency) }
 	until := func(t time.Time) time.Duration { return -time.Since(t) }
 
+	defer func() {
+		log.Println("Final commit")
+		commit()
+	}()
+
 	nextDeadline := getNextDeadline()
 	for {
-		time.Sleep(until(nextDeadline))
-		nextDeadline = getNextDeadline()
-
-		mu.Lock()
-		log.Println("Deadline commit")
-		Commit(buf[:len(buf)-len(p)])
-		if done {
-			mu.Unlock()
+		select {
+		case <-time.After(until(nextDeadline)):
+		case <-done:
 			return
 		}
-		mu.Unlock()
+		nextDeadline = getNextDeadline()
+
+		log.Println("Commit")
+		commit()
 	}
+
 }
