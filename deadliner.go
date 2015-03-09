@@ -44,15 +44,21 @@ func (d *Deadliner) Until() time.Duration {
 	return -time.Since(d.next)
 }
 
-// Is this behind?
-func (d *Deadliner) behind() bool {
+func (d *Deadliner) Passed() bool {
+	d.c.L.Lock()
+	defer d.c.L.Unlock()
+	return d.passed()
+}
+
+// Is this passed?
+func (d *Deadliner) passed() bool {
 	return time.Since(d.next) > 0
 }
 
 // Wait until the deadline has been met
 func (d *Deadliner) Wait() {
 	d.c.L.Lock()
-	for d.behind() {
+	for d.passed() {
 		d.c.Wait()
 	}
 	d.c.L.Unlock()

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -33,19 +35,44 @@ func Stream(args []string) (in io.Reader, wait func()) {
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
 // Commit should run very quickly.
-func Commit(buf []byte) {
-	// Find the final newline
+func Commit(buf []byte) int {
+	idx := bytes.LastIndex(buf, []byte("\n"))
+
+	var p []byte
+	if idx == -1 {
+		// No newline, take everything
+		p = buf
+	} else {
+		// take up to the last newline
+		p = buf[:idx]
+	}
 
 	// Copy the data to a fresh buffer
+	newbuf := make([]byte, len(p))
+	copy(newbuf, p)
+
+	log.Printf("Commit %d bytes", len(newbuf))
+	fmt.Println(string(newbuf))
+	go func() {
+		// Commence a copy to permanent storage on the fresh buffer
+		nMu.Lock()
+		defer nMu.Unlock()
+
+		n += len(newbuf)
+	}()
 
 	// Move trailing data to beginning of `buf` and truncate `buf`
+	copy(buf, buf[len(p):])
+	leftOver := len(buf) - len(p)
+	buf = buf[:leftOver]
 
-	// Commence a copy to permanent storage on the fresh buffer
-	log.Printf("Commit %d bytes", len(buf))
-	n += len(buf)
+	return leftOver
 }
 
-var n int
+var (
+	nMu sync.Mutex
+	n   int
+)
 
 func main() {
 
@@ -78,8 +105,8 @@ func main() {
 		}
 		if len(p[n:]) == 0 {
 			// Buffer is full!
-			Commit(buf)
-			p = buf
+			n := Commit(buf)
+			p = buf[n:]
 		} else {
 			// Advance p
 			p = p[n:]
@@ -93,8 +120,8 @@ func main() {
 
 		deadliner.Met()
 
-		Commit(buf[:len(buf)-len(p)])
-		p = buf
+		n := Commit(buf[:len(buf)-len(p)])
+		p = buf[n:]
 	}
 
 	go func() {
@@ -138,6 +165,9 @@ func main() {
 	for {
 		select {
 		case <-time.After(deadliner.Until()):
+			if !deadliner.Passed() {
+				continue
+			}
 		case <-done:
 			return
 		}
