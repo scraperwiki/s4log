@@ -19,17 +19,15 @@ type CommitBuffer struct {
 	mu     sync.Mutex
 	buf, p []byte
 
-	*Deadliner
 	Committer
 }
 
 func NewCommitBuffer(
 	size int,
-	d *Deadliner,
 	c Committer,
 ) *CommitBuffer {
 	buf := make([]byte, size)
-	return &CommitBuffer{buf: buf, p: buf, Deadliner: d, Committer: c}
+	return &CommitBuffer{buf: buf, p: buf, Committer: c}
 }
 
 func (buf *CommitBuffer) Fill(in io.Reader) error {
@@ -55,8 +53,6 @@ func (buf *CommitBuffer) Commit() {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 
-	buf.Met()
-
 	n := buf.Committer.Commit(buf.buf[:len(buf.buf)-len(buf.p)])
 	buf.p = buf.buf[n:]
 }
@@ -67,8 +63,8 @@ func main() {
 		MiB = 1 << 20
 		kiB = 1 << 10
 		// Period     = 5 * time.Minute // Maximum time between commits
-		Period     = 5 * time.Second // Maximum time between commits
-		BufferSize = 10 * kiB        // Size of buffer before flushing
+		Period     = 100 * time.Millisecond // Maximum time between commits
+		BufferSize = 10 * kiB               // Size of buffer before flushing
 	)
 
 	defer func() {
@@ -87,49 +83,22 @@ func main() {
 
 	var (
 		deadliner = NewDeadliner(Period)
-		done      = make(chan struct{})
 		committer = DeadlineMetCommitter{deadliner, afc}
 
-		buf = NewCommitBuffer(BufferSize, deadliner, committer)
+		buf = NewCommitBuffer(BufferSize, committer)
 	)
 
-	go func() {
-		defer close(done)
-
-		in := Input(os.Args[1:])
-
-		in, err = NewDeadlineReader(in.(Fder), deadliner)
+	in := Input(os.Args[1:])
+	in, err = NewDeadlineReader(in.(Fder), deadliner)
+	if err != nil {
+		log.Fatalf("Unable to construct DeadlineReader: %v", err)
+	}
+	defer func() {
+		// Note: blocks until Input() is cleaned up
+		//       (e.g, process waited for.)
+		err := in.Close()
 		if err != nil {
-			log.Fatalf("Unable to construct DeadlineReader: %v", err)
-		}
-
-		defer func() {
-			// Note: blocks until Input() is cleaned up
-			//       (e.g, process waited for.)
-			err := in.Close()
-			if err != nil {
-				log.Printf("Failure during Input.Close: %v", err)
-			}
-		}()
-
-		for {
-
-			// Read deadline allows us to have a large buffer but not wait
-			// indefinitely for it to be filled.
-			err := buf.Fill(in)
-			switch err {
-			case nil:
-				continue
-			case poller.ErrTimeout:
-				deadliner.Wait()
-				continue
-			case io.EOF:
-				log.Println("EOF")
-				return
-			default:
-				log.Printf("Error during read: %v", err)
-				return
-			}
+			log.Printf("Failure during Input.Close: %v", err)
 		}
 	}()
 
@@ -137,16 +106,21 @@ func main() {
 	defer buf.Commit()
 
 	for {
-		select {
-		case <-time.After(deadliner.Until()):
-			if !deadliner.Passed() {
-				continue
-			}
-		case <-done:
+		err := buf.Fill(in)
+
+		switch err {
+		case nil:
+			continue
+		case poller.ErrTimeout:
+			// The deadline has timed out. Issue a commit.
+			buf.Commit()
+			continue
+		case io.EOF:
+			log.Println("EOF")
+			return
+		default:
+			log.Printf("Error during read: %v", err)
 			return
 		}
-
-		log.Println("Deadline commit")
-		buf.Commit()
 	}
 }
