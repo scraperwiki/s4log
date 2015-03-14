@@ -33,7 +33,9 @@ func (d *Deadliner) Met() {
 	defer d.c.L.Unlock()
 
 	d.c.Broadcast()
-	d.next = d.next.Add(d.period)
+	if -time.Since(d.next) < d.period {
+		d.next = d.next.Add(d.period)
+	}
 }
 
 // Until returns time until the next deadline. May be negative if unmet.
