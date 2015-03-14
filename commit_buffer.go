@@ -22,7 +22,7 @@ func NewCommitBuffer(
 	return &CommitBuffer{buf: buf, cursor: buf, Committer: c}
 }
 
-func (buf *CommitBuffer) Fill(in io.Reader) error {
+func (buf *CommitBuffer) ReadFrom(in io.Reader) error {
 	n, err := in.Read(buf.cursor)
 	if err != nil {
 		return err

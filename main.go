@@ -65,14 +65,13 @@ func main() {
 	defer buf.Commit()
 
 	for {
-		// buf will read from `in` and issue a `Commit()` if the buffer is full.
-		err := buf.Fill(in)
+		err := buf.ReadFrom(in)
 
 		switch err {
 		case nil:
 			continue
 		case poller.ErrTimeout:
-			// The deadline has timed out. Issue a commit.
+			// The deadline has passed. Issue a commit.
 			buf.Commit()
 			continue
 		case ErrBufFull:
