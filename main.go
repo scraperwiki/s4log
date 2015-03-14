@@ -17,17 +17,16 @@ func Input(args []string) (in io.Reader, wait func()) {
 	cmd := exec.Command(args[0], args[1:]...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Fatalln("Unable to allocate StdoutPipe:", err)
+		log.Fatalf("Unable to allocate StdoutPipe: %v", err)
 	}
 	err = cmd.Start()
 	if err != nil {
-		log.Fatalln("Error starting command:", err)
+		log.Fatalf("Error starting command: %v", err)
 	}
 	return stdout, func() {
 		err := cmd.Wait()
 		if err != nil {
-			// TODO(pwaller): Better handling
-			log.Println("Command had an error:", err)
+			log.Printf("Command had an error: %v", err)
 		}
 	}
 }
@@ -94,12 +93,11 @@ func main() {
 		mu.Lock()
 		defer mu.Unlock()
 
+		// Read deadline allows us to have a large buffer but not wait
+		// indefinitely for it to be filled.
 		in.SetReadDeadline(deadliner.Deadline())
 
-		// TODO: Use a read deadline to ensure that the commit deadline has
-		// a chance.
 		n, err := in.Read(p)
-		// log.Println("Read", n, err)
 		if err != nil {
 			return err
 		}
@@ -132,7 +130,7 @@ func main() {
 		fd := int(in.(*os.File).Fd())
 		pollFD, err := poller.NewFD(fd)
 		if err != nil {
-			log.Fatal("Problem:", err)
+			log.Fatalf("Problem whilst polling: %v", err)
 			return
 		}
 		for {
@@ -147,7 +145,7 @@ func main() {
 				log.Println("EOF")
 				return
 			default:
-				log.Println("Error during read:", err)
+				log.Printf("Error during read: %v", err)
 				return
 			}
 		}
@@ -175,5 +173,4 @@ func main() {
 		log.Println("Deadline commit")
 		commit()
 	}
-
 }
