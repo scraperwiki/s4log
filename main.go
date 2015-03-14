@@ -50,7 +50,7 @@ func main() {
 
 	// Reading from `in` will stop blocking if there is data available or
 	// when the deadline passes.
-	in, err = NewDeadlineReader(in.(Fder), deadliner)
+	in, err = NewDeadlineReader(in.(FdCloser), deadliner)
 	if err != nil {
 		log.Fatalf("Unable to construct DeadlineReader: %v", err)
 	}
