@@ -84,10 +84,6 @@ func (afc *AsyncFileCommitter) Commit(buf []byte) int {
 			log.Printf("Error committing %q: %v", name, err)
 			return
 		}
-
-		nMu.Lock()
-		defer nMu.Unlock()
-		n += len(newbuf)
 	}()
 
 	// Move trailing data to beginning of `buf` and truncate `buf`

@@ -10,11 +10,6 @@ import (
 	"github.com/scraperwiki/s4log/poller"
 )
 
-var (
-	nMu sync.Mutex
-	n   int
-)
-
 type CommitBuffer struct {
 	mu     sync.Mutex
 	buf, p []byte
@@ -66,10 +61,6 @@ func main() {
 		Period     = 100 * time.Millisecond // Maximum time between commits
 		BufferSize = 10 * kiB               // Size of buffer before flushing
 	)
-
-	defer func() {
-		log.Printf("Exiting, total bytes: %v", n)
-	}()
 
 	hostname, err := os.Hostname()
 	if err != nil {
