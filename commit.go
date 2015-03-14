@@ -114,13 +114,6 @@ func (ac AsyncCommitter) Commit(buf []byte) int {
 	return 0
 }
 
-// Only call this once. Consumes the whole Semaphore.
-func (ac *AsyncCommitter) Wait() {
-	for i := 0; i < cap(ac.Semaphore); i++ {
-		ac.Acquire()
-	}
-}
-
 // A committer which sleeps before committing, for testing AsyncCommitter
 type SlowCommitter struct {
 	Committer
