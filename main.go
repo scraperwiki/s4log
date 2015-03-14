@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/scraperwiki/s4log/poller"
@@ -14,7 +13,6 @@ import (
 var ErrBufFull = errors.New("Buffer full")
 
 type CommitBuffer struct {
-	mu     sync.Mutex
 	buf, p []byte
 
 	Committer
@@ -29,9 +27,6 @@ func NewCommitBuffer(
 }
 
 func (buf *CommitBuffer) Fill(in io.Reader) error {
-	buf.mu.Lock()
-	defer buf.mu.Unlock()
-
 	n, err := in.Read(buf.p)
 	if err != nil {
 		return err
@@ -46,9 +41,6 @@ func (buf *CommitBuffer) Fill(in io.Reader) error {
 }
 
 func (buf *CommitBuffer) Commit() {
-	buf.mu.Lock()
-	defer buf.mu.Unlock()
-
 	amount := len(buf.buf) - len(buf.p)
 	if amount == 0 {
 		// No bytes to commit
