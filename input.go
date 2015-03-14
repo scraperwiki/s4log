@@ -64,5 +64,9 @@ func (dr *DeadlineReader) Read(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return dr.FD.Read(buf)
+	n, err := dr.FD.Read(buf)
+	if err == poller.ErrTimeout {
+		return n, ErrNeedFlush
+	}
+	return n, err
 }

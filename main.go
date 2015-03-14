@@ -6,8 +6,6 @@ import (
 	"log"
 	"os"
 	"time"
-
-	"github.com/scraperwiki/s4log/poller"
 )
 
 func main() {
@@ -39,15 +37,19 @@ func main() {
 	committer = async
 
 	deadliner := NewDeadliner(Period)
+	// During a commit, the Deadline is reset.
 	committer = DeadlineMetCommitter{deadliner, committer}
 	committer = NewlineCommitter{committer}
 
 	var (
 		buf = NewFlushBuffer(BufferSize, committer)
 
+		// Invoke the target command and read its stdout.
 		in = Input(flag.Args())
 	)
 
+	// Reading from `in` will stop blocking if there is data available or
+	// when the deadline passes.
 	in, err = NewDeadlineReader(in.(Fder), deadliner)
 	if err != nil {
 		log.Fatalf("Unable to construct DeadlineReader: %v", err)
@@ -61,24 +63,12 @@ func main() {
 		}
 	}()
 
-	// Do a final commit
-	defer buf.Flush()
-
-	for {
-		err := buf.ReadFrom(in)
-
-		switch err {
-		case nil: // Everything is fine.
-		case poller.ErrTimeout: // The deadline has passed.
-			buf.Flush()
-		case ErrBufFull: // Buffer is full.
-			buf.Flush()
-		case io.EOF:
-			log.Println("EOF")
-			return
-		default:
-			log.Printf("Error during read: %v", err)
-			return
-		}
+	// Read from `in` until EOF.
+	err = buf.ReadFrom(in)
+	switch err {
+	case io.EOF:
+		log.Printf("EOF")
+	default:
+		log.Printf("error whilst reading: %v", err)
 	}
 }

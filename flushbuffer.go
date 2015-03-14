@@ -5,7 +5,9 @@ import (
 	"io"
 )
 
-var ErrBufFull = errors.New("Buffer full")
+var (
+	ErrNeedFlush = errors.New("Buffer needs flushing")
+)
 
 // FlushBuffer is similar to a bytes.Buffer, except it has a bounded size.
 // When the buffer is full, a Committer is called to process the data, and
@@ -25,7 +27,8 @@ func NewFlushBuffer(
 	return &FlushBuffer{buf: buf, cursor: buf, Committer: c}
 }
 
-func (fb *FlushBuffer) ReadFrom(in io.Reader) error {
+// Emit a single Read call.
+func (fb *FlushBuffer) PartialReadFrom(in io.Reader) error {
 	n, err := in.Read(fb.cursor)
 	if err != nil {
 		return err
@@ -34,9 +37,27 @@ func (fb *FlushBuffer) ReadFrom(in io.Reader) error {
 	fb.cursor = fb.cursor[n:]
 	if len(fb.cursor) == 0 {
 		// No space left in buffer.
-		return ErrBufFull
+		return ErrNeedFlush
 	}
 	return nil
+}
+
+// Keep reading from the input and emit a Flush if there is a timeout or the
+// buffer is full.
+func (fb *FlushBuffer) ReadFrom(in io.Reader) error {
+	defer fb.Flush() // Do a final commit
+
+	for {
+		err := fb.PartialReadFrom(in)
+
+		switch err {
+		case ErrNeedFlush: // Buffer is full or timeout has passed.
+			fb.Flush()
+		default: // Unknown error
+			return err
+		case nil: // Everything is fine.
+		}
+	}
 }
 
 // Amount of data currently in the buffer waiting to be flushed.
