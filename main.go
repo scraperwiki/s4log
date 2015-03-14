@@ -13,7 +13,8 @@ import (
 var ErrBufFull = errors.New("Buffer full")
 
 type CommitBuffer struct {
-	buf, p []byte
+	// `buf` is a once-initialized buf, and `p` is a cursor into it.
+	buf, cursor []byte
 
 	Committer
 }
@@ -23,17 +24,17 @@ func NewCommitBuffer(
 	c Committer,
 ) *CommitBuffer {
 	buf := make([]byte, size)
-	return &CommitBuffer{buf: buf, p: buf, Committer: c}
+	return &CommitBuffer{buf: buf, cursor: buf, Committer: c}
 }
 
 func (buf *CommitBuffer) Fill(in io.Reader) error {
-	n, err := in.Read(buf.p)
+	n, err := in.Read(buf.cursor)
 	if err != nil {
 		return err
 	}
 	// Advance p
-	buf.p = buf.p[n:]
-	if len(buf.p) == 0 {
+	buf.cursor = buf.cursor[n:]
+	if len(buf.cursor) == 0 {
 		// Buffer is full!
 		return ErrBufFull
 	}
@@ -41,14 +42,14 @@ func (buf *CommitBuffer) Fill(in io.Reader) error {
 }
 
 func (buf *CommitBuffer) Commit() {
-	amount := len(buf.buf) - len(buf.p)
+	amount := len(buf.buf) - len(buf.cursor)
 	if amount == 0 {
 		// No bytes to commit
 		return
 	}
 
 	n := buf.Committer.Commit(buf.buf[:amount])
-	buf.p = buf.buf[n:]
+	buf.cursor = buf.buf[n:]
 }
 
 func main() {
