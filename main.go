@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/scraperwiki/s4log/poller"
 )
+
+var ErrBufFull = errors.New("Buffer full")
 
 type CommitBuffer struct {
 	mu     sync.Mutex
@@ -33,13 +36,11 @@ func (buf *CommitBuffer) Fill(in io.Reader) error {
 	if err != nil {
 		return err
 	}
-	if len(buf.p[n:]) == 0 {
+	// Advance p
+	buf.p = buf.p[n:]
+	if len(buf.p) == 0 {
 		// Buffer is full!
-		n := buf.Committer.Commit(buf.buf)
-		buf.p = buf.buf[n:]
-	} else {
-		// Advance p
-		buf.p = buf.p[n:]
+		return ErrBufFull
 	}
 	return nil
 }
@@ -116,6 +117,10 @@ func main() {
 			continue
 		case poller.ErrTimeout:
 			// The deadline has timed out. Issue a commit.
+			buf.Commit()
+			continue
+		case ErrBufFull:
+			// Buffer is full. Issue a commit.
 			buf.Commit()
 			continue
 		case io.EOF:
