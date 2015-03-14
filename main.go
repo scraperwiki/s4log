@@ -33,7 +33,7 @@ func Input(args []string) (in io.Reader, wait func()) {
 
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
-func Commit(wg *sync.WaitGroup, buf []byte) int {
+func Commit(wg *sync.WaitGroup, hostname string, buf []byte) int {
 	if len(buf) == 0 {
 		// Nothing to do
 		return 0
@@ -94,6 +94,11 @@ func main() {
 		p   = buf
 	)
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatal("Unable to determine hostname:", err)
+	}
+
 	defer func() {
 		log.Printf("Exiting, total bytes: %v", n)
 	}()
@@ -115,7 +120,7 @@ func main() {
 		}
 		if len(p[n:]) == 0 {
 			// Buffer is full!
-			n := Commit(&wg, buf)
+			n := Commit(&wg, hostname, buf)
 			p = buf[n:]
 		} else {
 			// Advance p
@@ -130,7 +135,7 @@ func main() {
 
 		deadliner.Met()
 
-		n := Commit(&wg, buf[:len(buf)-len(p)])
+		n := Commit(&wg, hostname, buf[:len(buf)-len(p)])
 		p = buf[n:]
 	}
 
