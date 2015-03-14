@@ -85,6 +85,18 @@ var (
 	n   int
 )
 
+type CommitBuffer struct {
+	mu     sync.Mutex
+	buf, p []byte
+}
+
+func NewCommitBuffer(size int) *CommitBuffer {
+	buf := make([]byte, size)
+	return &CommitBuffer{
+		buf: buf, p: buf,
+	}
+}
+
 func main() {
 
 	const (
@@ -99,9 +111,7 @@ func main() {
 		deadliner = NewDeadliner(Period)
 		done      = make(chan struct{})
 
-		mu  sync.Mutex
-		buf = make([]byte, BufferSize)
-		p   = buf
+		buf = NewCommitBuffer(BufferSize)
 	)
 
 	hostname, err := os.Hostname()
@@ -117,42 +127,44 @@ func main() {
 	defer wg.Wait()
 
 	fill := func(in *poller.FD) error {
-		mu.Lock()
-		defer mu.Unlock()
+		buf.mu.Lock()
+		defer buf.mu.Unlock()
 
 		// Read deadline allows us to have a large buffer but not wait
 		// indefinitely for it to be filled.
 		in.SetReadDeadline(deadliner.Deadline())
 
-		n, err := in.Read(p)
+		n, err := in.Read(buf.p)
 		if err != nil {
 			return err
 		}
-		if len(p[n:]) == 0 {
+		if len(buf.p[n:]) == 0 {
 			// Buffer is full!
-			n := Commit(&wg, hostname, buf)
-			p = buf[n:]
+			n := Commit(&wg, hostname, buf.buf)
+			buf.p = buf.buf[n:]
 		} else {
 			// Advance p
-			p = p[n:]
+			buf.p = buf.p[n:]
 		}
 		return nil
 	}
 
 	commit := func() {
-		mu.Lock()
-		defer mu.Unlock()
+		buf.mu.Lock()
+		defer buf.mu.Unlock()
 
 		deadliner.Met()
 
-		n := Commit(&wg, hostname, buf[:len(buf)-len(p)])
-		p = buf[n:]
+		n := Commit(&wg, hostname, buf.buf[:len(buf.buf)-len(buf.p)])
+		buf.p = buf.buf[n:]
 	}
 
 	go func() {
 		defer close(done)
 		in := Input(os.Args[1:])
 		defer func() {
+			// Note: blocks until Input() is cleaned up
+			//       (e.g, process waited for.)
 			err := in.Close()
 			if err != nil {
 				log.Printf("Failure during Input.Close: %v", err)
