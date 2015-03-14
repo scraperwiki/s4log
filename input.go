@@ -79,9 +79,13 @@ func (dr *DeadlineReader) Read(buf []byte) (int, error) {
 }
 
 func (dr *DeadlineReader) Close() error {
-	err := dr.Closer.Close()
+	err := dr.FD.Close()
+	if err != nil {
+		log.Printf("Failed to close poller fd: %v", err)
+	}
+	err = dr.Closer.Close()
 	if err != nil {
 		return err
 	}
-	return dr.FD.Close()
+	return nil
 }
