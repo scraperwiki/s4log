@@ -7,6 +7,9 @@ import (
 
 var ErrBufFull = errors.New("Buffer full")
 
+// CommitBuffer is similar to a bytes.Buffer, except it has a bounded size.
+// When the buffer is full, a Committer is called to process the data, and
+// any remaining trailer is moved to the beginning of the buffer.
 type CommitBuffer struct {
 	// `buf` is a once-initialized buf, and `cursor` points into it.
 	buf, cursor []byte
@@ -27,33 +30,35 @@ func (buf *CommitBuffer) ReadFrom(in io.Reader) error {
 	if err != nil {
 		return err
 	}
-	// Advance p
+	// Advance the cursor.
 	buf.cursor = buf.cursor[n:]
 	if len(buf.cursor) == 0 {
-		// Buffer is full!
+		// No space left in buffer.
 		return ErrBufFull
 	}
 	return nil
 }
 
-func (buf *CommitBuffer) Size() int {
+// Amount of data currently in the buffer waiting to be flushed.
+func (buf *CommitBuffer) Len() int {
 	return len(buf.buf) - len(buf.cursor)
 }
 
+// Called to flush the buffer to the underlying Committer.
 func (buf *CommitBuffer) Commit() {
-	if buf.Size() == 0 {
-		// No bytes to commit
+	if buf.Len() == 0 {
+		// No bytes to commit.
 		return
 	}
 
-	ready := buf.buf[:buf.Size()]
+	ready := buf.buf[:buf.Len()]
 	remaining := buf.Committer.Commit(ready)
 	buf.MoveTrailer(remaining)
 }
 
-// Moven bytes of trailing data to beginning of `buf` and truncate `buf`.
+// Move n bytes of trailing data to beginning of `buf` and truncate `buf`.
 func (buf *CommitBuffer) MoveTrailer(n int) {
-	trailer := buf.buf[buf.Size()-n : buf.Size()]
+	trailer := buf.buf[buf.Len()-n : buf.Len()]
 
 	copy(buf.buf, trailer)
 	buf.cursor = buf.buf[n:]
