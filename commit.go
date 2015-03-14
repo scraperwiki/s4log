@@ -15,6 +15,13 @@ type Committer interface {
 	Commit(buf []byte) int
 }
 
+// Allow a func to implement Committer
+type CommitterFunc func(buf []byte) int
+
+func (cf CommitterFunc) Commit(buf []byte) int {
+	return cf(buf)
+}
+
 // Writes the committed buffer to a file with the
 // hostname and timestamp in the path.
 type FileCommitter struct {
