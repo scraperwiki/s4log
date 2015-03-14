@@ -26,6 +26,8 @@ func Input(args []string) io.ReadCloser {
 		log.Fatalf("Unable to allocate StdoutPipe: %v", err)
 	}
 
+	cmd.Stderr = cmd.Stdout
+
 	err = cmd.Start()
 	if err != nil {
 		log.Fatalf("Error starting command: %v", err)
