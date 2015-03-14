@@ -13,7 +13,7 @@ import (
 	"github.com/scraperwiki/s4log/poller"
 )
 
-func Stream(args []string) (in io.Reader, wait func()) {
+func Input(args []string) (in io.Reader, wait func()) {
 	cmd := exec.Command(args[0], args[1:]...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -126,7 +126,7 @@ func main() {
 
 	go func() {
 		defer close(done)
-		in, wait := Stream(os.Args[1:])
+		in, wait := Input(os.Args[1:])
 		defer wait()
 
 		fd := int(in.(*os.File).Fd())
