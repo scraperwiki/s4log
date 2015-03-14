@@ -48,7 +48,13 @@ func (buf *CommitBuffer) Commit() {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 
-	n := buf.Committer.Commit(buf.buf[:len(buf.buf)-len(buf.p)])
+	amount := len(buf.buf) - len(buf.p)
+	if amount == 0 {
+		// No bytes to commit
+		return
+	}
+
+	n := buf.Committer.Commit(buf.buf[:amount])
 	buf.p = buf.buf[n:]
 }
 
@@ -67,13 +73,19 @@ func main() {
 		log.Fatal("Unable to determine hostname:", err)
 	}
 
-	afc := &AsyncCommitter{Committer: &FileCommitter{hostname}}
-	defer afc.Wait()
+	var committer Committer
+
+	committer = &FileCommitter{hostname}
+
+	async := &AsyncCommitter{Committer: committer}
+	defer async.Wait()
+	committer = async
+
+	deadliner := NewDeadliner(Period)
+	committer = DeadlineMetCommitter{deadliner, committer}
+	committer = NewlineCommitter{committer}
 
 	var (
-		deadliner = NewDeadliner(Period)
-		committer = DeadlineMetCommitter{deadliner, afc}
-
 		buf = NewCommitBuffer(BufferSize, committer)
 
 		in = Input(os.Args[1:])

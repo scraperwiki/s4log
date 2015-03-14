@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+type Committer interface {
+	// A committer takes an input buffer and returns the number of trailing
+	// bytes not processed.
+	Commit(buf []byte) int
+}
+
 type FileCommitter struct {
 	hostname string
 }
@@ -45,10 +51,6 @@ func WriteBuf(name string, data []byte) error {
 	return err
 }
 
-type Committer interface {
-	Commit(buf []byte) int
-}
-
 // Wraps a Committer and calls Deadliner.Met() when commit is called.
 type DeadlineMetCommitter struct {
 	*Deadliner
@@ -60,14 +62,14 @@ func (dc DeadlineMetCommitter) Commit(buf []byte) int {
 	return dc.Committer.Commit(buf)
 }
 
-type AsyncCommitter struct {
-	sync.WaitGroup
+// Wraps a committer, processing bytes upto the last newline in `buf`.
+type NewlineCommitter struct {
 	Committer
 }
 
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
-func (afc *AsyncCommitter) Commit(buf []byte) int {
+func (nlc NewlineCommitter) Commit(buf []byte) int {
 	if len(buf) == 0 {
 		// Nothing to do
 		return 0
@@ -83,17 +85,7 @@ func (afc *AsyncCommitter) Commit(buf []byte) int {
 		p = buf[:idx+1]
 	}
 
-	// Copy the data to a fresh buffer
-	newbuf := make([]byte, len(p))
-	copy(newbuf, p)
-
-	// Commence an asynchronous copy of the buffer to permanent storage.
-	afc.Add(1)
-	go func() {
-		defer afc.Done()
-
-		afc.Committer.Commit(newbuf)
-	}()
+	nlc.Committer.Commit(buf)
 
 	// Move trailing data to beginning of `buf` and truncate `buf`
 	copy(buf, buf[len(p):])
@@ -101,4 +93,28 @@ func (afc *AsyncCommitter) Commit(buf []byte) int {
 	buf = buf[:leftOver]
 
 	return leftOver
+}
+
+// Wraps a Committer and calls it asynchronously with a copy of the buffer.
+type AsyncCommitter struct {
+	sync.WaitGroup
+	Committer
+}
+
+// Commits `buf` to permanent storage, up to the final newline.
+// If there is data following the final newline, it is moved to the beginning.
+func (afc *AsyncCommitter) Commit(buf []byte) int {
+	// Copy the data to a fresh buffer
+	bufCopy := make([]byte, len(buf))
+	copy(bufCopy, buf)
+
+	// Commence an asynchronous copy of the buffer to permanent storage.
+	afc.Add(1)
+	go func() {
+		defer afc.Done()
+
+		afc.Committer.Commit(bufCopy)
+	}()
+
+	return 0
 }
