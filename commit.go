@@ -101,7 +101,6 @@ func (ac AsyncCommitter) Commit(buf []byte) int {
 
 	// Commence an asynchronous commit on the copy.
 	ac.Acquire()
-	log.Printf("Commits in flight: %v", len(ac.Semaphore))
 	go func() {
 		defer ac.Release()
 
