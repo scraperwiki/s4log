@@ -166,9 +166,6 @@ func main() {
 		buf = NewCommitBuffer(BufferSize, &wg, deadliner, hostname)
 	)
 
-	fill := buf.Fill
-	commit := buf.Commit
-
 	go func() {
 		defer close(done)
 		in := Input(os.Args[1:])
@@ -188,7 +185,7 @@ func main() {
 			return
 		}
 		for {
-			err := fill(pollFD)
+			err := buf.Fill(pollFD)
 			switch err {
 			case nil:
 				continue
@@ -206,7 +203,7 @@ func main() {
 	}()
 
 	// Do a final commit
-	defer commit()
+	defer buf.Commit()
 
 	for {
 		select {
@@ -219,6 +216,6 @@ func main() {
 		}
 
 		log.Println("Deadline commit")
-		commit()
+		buf.Commit()
 	}
 }
