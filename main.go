@@ -43,8 +43,8 @@ func Commit(buf []byte) int {
 		// No newline, take everything
 		p = buf
 	} else {
-		// take up to the last newline
-		p = buf[:idx]
+		// take up to the last newline, including the newline
+		p = buf[:idx+1]
 	}
 
 	// Copy the data to a fresh buffer
