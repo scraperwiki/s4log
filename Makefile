@@ -1,4 +1,7 @@
-all: build
+all: test build
+
+test: deps
+	go test -v -race
 
 race: deps
 	go build -race
