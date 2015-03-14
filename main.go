@@ -104,6 +104,29 @@ func NewCommitBuffer(
 	return &CommitBuffer{buf: buf, p: buf, wg: wg, deadliner: d, hostname: h}
 }
 
+func (buf *CommitBuffer) Fill(in *poller.FD) error {
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+
+	// Read deadline allows us to have a large buffer but not wait
+	// indefinitely for it to be filled.
+	in.SetReadDeadline(buf.deadliner.Deadline())
+
+	n, err := in.Read(buf.p)
+	if err != nil {
+		return err
+	}
+	if len(buf.p[n:]) == 0 {
+		// Buffer is full!
+		n := Commit(buf.wg, buf.hostname, buf.buf)
+		buf.p = buf.buf[n:]
+	} else {
+		// Advance p
+		buf.p = buf.p[n:]
+	}
+	return nil
+}
+
 func (buf *CommitBuffer) Commit() {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
@@ -143,29 +166,7 @@ func main() {
 		buf = NewCommitBuffer(BufferSize, &wg, deadliner, hostname)
 	)
 
-	fill := func(in *poller.FD) error {
-		buf.mu.Lock()
-		defer buf.mu.Unlock()
-
-		// Read deadline allows us to have a large buffer but not wait
-		// indefinitely for it to be filled.
-		in.SetReadDeadline(deadliner.Deadline())
-
-		n, err := in.Read(buf.p)
-		if err != nil {
-			return err
-		}
-		if len(buf.p[n:]) == 0 {
-			// Buffer is full!
-			n := Commit(&wg, hostname, buf.buf)
-			buf.p = buf.buf[n:]
-		} else {
-			// Advance p
-			buf.p = buf.p[n:]
-		}
-		return nil
-	}
-
+	fill := buf.Fill
 	commit := buf.Commit
 
 	go func() {
