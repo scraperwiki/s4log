@@ -68,30 +68,26 @@ type NewlineCommitter struct {
 }
 
 func (nlc NewlineCommitter) Commit(buf []byte) int {
-	if len(buf) == 0 {
-		// Nothing to do
-		return 0
-	}
 	idx := bytes.LastIndex(buf, []byte("\n"))
 
-	var p []byte
+	var toNL []byte
 	if idx == -1 {
-		// No newline, take everything
-		p = buf
+		// No newline, take everything.
+		toNL = buf
 	} else {
-		// take up to the last newline, including the newline
-		p = buf[:idx+1]
+		// Take up to the last newline, including the newline.
+		toNL = buf[:idx+1]
 	}
 
-	x := nlc.Committer.Commit(buf)
+	x := nlc.Committer.Commit(toNL)
 	if x != 0 {
 		// TODO(pwaller): Not sure what to do with bytes left over here..
 		log.Panic("Assertion fail, bytes left over:", x)
 	}
 
 	// Move trailing data to beginning of `buf` and truncate `buf`
-	copy(buf, buf[len(p):])
-	leftOver := len(buf) - len(p)
+	copy(buf, buf[len(toNL):])
+	leftOver := len(buf) - len(toNL)
 	buf = buf[:leftOver]
 
 	return leftOver
