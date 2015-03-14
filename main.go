@@ -75,9 +75,10 @@ func main() {
 		committer = DeadlineMetCommitter{deadliner, afc}
 
 		buf = NewCommitBuffer(BufferSize, committer)
+
+		in = Input(os.Args[1:])
 	)
 
-	in := Input(os.Args[1:])
 	in, err = NewDeadlineReader(in.(Fder), deadliner)
 	if err != nil {
 		log.Fatalf("Unable to construct DeadlineReader: %v", err)
