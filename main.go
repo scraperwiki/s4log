@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"io"
 	"log"
 	"os"
@@ -74,6 +75,12 @@ func main() {
 		BufferSize = 10 * kiB               // Size of buffer before flushing
 	)
 
+	flag.Parse()
+
+	if len(flag.Args()) == 0 {
+		log.Fatal("Usage: s4log <command> [args...]")
+	}
+
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatal("Unable to determine hostname:", err)
@@ -94,7 +101,7 @@ func main() {
 	var (
 		buf = NewCommitBuffer(BufferSize, committer)
 
-		in = Input(os.Args[1:])
+		in = Input(flag.Args())
 	)
 
 	in, err = NewDeadlineReader(in.(Fder), deadliner)
