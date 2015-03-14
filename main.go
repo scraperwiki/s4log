@@ -13,29 +13,40 @@ import (
 	"github.com/scraperwiki/s4log/poller"
 )
 
-func Input(args []string) (in io.Reader, wait func()) {
+type Fder interface {
+	Fd() uintptr
+}
+
+// Turns a close into a wait. Needed so that Wait() can be called on the *cmd.
+type WaitCloser func() error
+
+func (wc WaitCloser) Close() (err error) {
+	return wc()
+}
+
+func Input(args []string) io.ReadCloser {
 	cmd := exec.Command(args[0], args[1:]...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Fatalf("Unable to allocate StdoutPipe: %v", err)
 	}
+
 	err = cmd.Start()
 	if err != nil {
 		log.Fatalf("Error starting command: %v", err)
 	}
-	return stdout, func() {
-		err := cmd.Wait()
-		if err != nil {
-			log.Printf("Command had an error: %v", err)
-		}
-	}
+
+	return struct {
+		io.Reader
+		io.Closer
+		Fder
+	}{stdout, WaitCloser(cmd.Wait), stdout.(Fder)}
 }
 
 func WriteBuf(name string, data []byte) error {
 	fd, err := os.Create(name)
 	if err != nil {
-		log.Printf("Failed to write buf: %v", err)
-		return err
+		return fmt.Errorf("failed to os.Create: %v", err)
 	}
 	defer fd.Close()
 
@@ -108,9 +119,11 @@ var (
 func main() {
 
 	const (
-		MiB        = 1 << 20
-		Period     = 5 * time.Minute // Maximum time between commits
-		BufferSize = 10 * MiB        // Size of buffer before flushing
+		MiB = 1 << 20
+		kiB = 1 << 10
+		// Period     = 5 * time.Minute // Maximum time between commits
+		Period     = 5 * time.Second // Maximum time between commits
+		BufferSize = 10 * kiB        // Size of buffer before flushing
 	)
 
 	var (
@@ -169,10 +182,15 @@ func main() {
 
 	go func() {
 		defer close(done)
-		in, wait := Input(os.Args[1:])
-		defer wait()
+		in := Input(os.Args[1:])
+		defer func() {
+			err := in.Close()
+			if err != nil {
+				log.Printf("Failure during Input.Close: %v", err)
+			}
+		}()
 
-		fd := int(in.(*os.File).Fd())
+		fd := int(in.(Fder).Fd())
 		pollFD, err := poller.NewFD(fd)
 		if err != nil {
 			log.Fatalf("Problem whilst polling: %v", err)
