@@ -19,19 +19,17 @@ type CommitBuffer struct {
 	mu     sync.Mutex
 	buf, p []byte
 
-	wg        *sync.WaitGroup
-	deadliner *Deadliner
-	hostname  string
+	*Deadliner
+	Committer
 }
 
 func NewCommitBuffer(
 	size int,
-	wg *sync.WaitGroup,
 	d *Deadliner,
-	h string,
+	c Committer,
 ) *CommitBuffer {
 	buf := make([]byte, size)
-	return &CommitBuffer{buf: buf, p: buf, wg: wg, deadliner: d, hostname: h}
+	return &CommitBuffer{buf: buf, p: buf, Deadliner: d, Committer: c}
 }
 
 func (buf *CommitBuffer) Fill(in *poller.FD) error {
@@ -40,7 +38,7 @@ func (buf *CommitBuffer) Fill(in *poller.FD) error {
 
 	// Read deadline allows us to have a large buffer but not wait
 	// indefinitely for it to be filled.
-	in.SetReadDeadline(buf.deadliner.Deadline())
+	in.SetReadDeadline(buf.Deadline())
 
 	n, err := in.Read(buf.p)
 	if err != nil {
@@ -48,7 +46,7 @@ func (buf *CommitBuffer) Fill(in *poller.FD) error {
 	}
 	if len(buf.p[n:]) == 0 {
 		// Buffer is full!
-		n := Commit(buf.wg, buf.hostname, buf.buf)
+		n := buf.Committer.Commit(buf.buf)
 		buf.p = buf.buf[n:]
 	} else {
 		// Advance p
@@ -61,9 +59,9 @@ func (buf *CommitBuffer) Commit() {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 
-	buf.deadliner.Met()
+	buf.Met()
 
-	n := Commit(buf.wg, buf.hostname, buf.buf[:len(buf.buf)-len(buf.p)])
+	n := buf.Committer.Commit(buf.buf[:len(buf.buf)-len(buf.p)])
 	buf.p = buf.buf[n:]
 }
 
@@ -89,11 +87,14 @@ func main() {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
+	afc := &AsyncFileCommitter{&wg, hostname}
+
 	var (
 		deadliner = NewDeadliner(Period)
 		done      = make(chan struct{})
+		committer = DeadlineMetCommitter{deadliner, afc}
 
-		buf = NewCommitBuffer(BufferSize, &wg, deadliner, hostname)
+		buf = NewCommitBuffer(BufferSize, deadliner, committer)
 	)
 
 	go func() {

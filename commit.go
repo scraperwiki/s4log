@@ -28,9 +28,28 @@ func WriteBuf(name string, data []byte) error {
 	return err
 }
 
+type Committer interface {
+	Commit(buf []byte) int
+}
+
+type DeadlineMetCommitter struct {
+	*Deadliner
+	Committer
+}
+
+func (dc DeadlineMetCommitter) Commit(buf []byte) int {
+	dc.Met()
+	return dc.Committer.Commit(buf)
+}
+
+type AsyncFileCommitter struct {
+	wg       *sync.WaitGroup
+	hostname string
+}
+
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
-func Commit(wg *sync.WaitGroup, hostname string, buf []byte) int {
+func (afc *AsyncFileCommitter) Commit(buf []byte) int {
 	if len(buf) == 0 {
 		// Nothing to do
 		return 0
@@ -51,12 +70,12 @@ func Commit(wg *sync.WaitGroup, hostname string, buf []byte) int {
 	copy(newbuf, p)
 
 	// Commence an asynchronous copy of the buffer to permanent storage.
-	wg.Add(1)
+	afc.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer afc.wg.Done()
 
 		timestamp := time.Now().Format(time.RFC3339Nano)
-		name := fmt.Sprintf("logs/%s-%s.txt", hostname, timestamp)
+		name := fmt.Sprintf("logs/%s-%s.txt", afc.hostname, timestamp)
 		log.Printf("Committing %d bytes to %q", len(newbuf), name)
 
 		err := WriteBuf(name, newbuf)
