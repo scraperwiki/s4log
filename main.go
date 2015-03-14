@@ -108,6 +108,7 @@ func main() {
 	defer buf.Commit()
 
 	for {
+		// buf will read from `in` and issue a `Commit()` if the buffer is full.
 		err := buf.Fill(in)
 
 		switch err {

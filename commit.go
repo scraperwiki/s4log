@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"sync"
@@ -11,11 +10,13 @@ import (
 )
 
 type Committer interface {
-	// A committer takes an input buffer and returns the number of trailing
-	// bytes not processed.
+	// A committer takes an input buffer and returns
+	// the number of trailing bytes not processed.
 	Commit(buf []byte) int
 }
 
+// Writes the committed buffer to a file with the
+// hostname and timestamp in the path.
 type FileCommitter struct {
 	hostname string
 }
@@ -23,32 +24,22 @@ type FileCommitter struct {
 func (fc *FileCommitter) Commit(buf []byte) int {
 	timestamp := time.Now().Format(time.RFC3339Nano)
 	name := fmt.Sprintf("logs/%s-%s.txt", fc.hostname, timestamp)
+
 	log.Printf("Committing %d bytes to %q", len(buf), name)
 
-	err := WriteBuf(name, buf)
-	if err != nil {
-		log.Printf("Error committing %q: %v", name, err)
-		return 0
-	}
-	return len(buf)
-}
-
-func WriteBuf(name string, data []byte) error {
 	fd, err := os.Create(name)
 	if err != nil {
-		return fmt.Errorf("failed to os.Create: %v", err)
+		log.Println("failed to os.Create: %v", err)
+		return len(buf)
 	}
 	defer fd.Close()
 
-	nw, err := fd.Write(data)
-	if err != nil || nw != len(data) {
-		log.Printf("Error or short write: (%v leftover): %v", len(data)-nw, err)
-		if err != nil {
-			err = io.ErrShortWrite
-		}
-		return err
+	nw, err := fd.Write(buf)
+	if err != nil || nw != len(buf) {
+		log.Printf("Error or short write: (%v leftover): %v", len(buf)-nw, err)
+		return nw
 	}
-	return err
+	return 0
 }
 
 // Wraps a Committer and calls Deadliner.Met() when commit is called.
@@ -63,12 +54,12 @@ func (dc DeadlineMetCommitter) Commit(buf []byte) int {
 }
 
 // Wraps a committer, processing bytes upto the last newline in `buf`.
+// If there is data following the final newline, it is moved to the beginning,
+// so that it may be processed in a subsequent commit.
 type NewlineCommitter struct {
 	Committer
 }
 
-// Commits `buf` to permanent storage, up to the final newline.
-// If there is data following the final newline, it is moved to the beginning.
 func (nlc NewlineCommitter) Commit(buf []byte) int {
 	if len(buf) == 0 {
 		// Nothing to do
@@ -85,7 +76,11 @@ func (nlc NewlineCommitter) Commit(buf []byte) int {
 		p = buf[:idx+1]
 	}
 
-	nlc.Committer.Commit(buf)
+	x := nlc.Committer.Commit(buf)
+	if x != 0 {
+		// TODO(pwaller): Not sure what to do with bytes left over here..
+		log.Panic("Assertion fail, bytes left over:", x)
+	}
 
 	// Move trailing data to beginning of `buf` and truncate `buf`
 	copy(buf, buf[len(p):])
@@ -101,19 +96,21 @@ type AsyncCommitter struct {
 	Committer
 }
 
-// Commits `buf` to permanent storage, up to the final newline.
-// If there is data following the final newline, it is moved to the beginning.
-func (afc *AsyncCommitter) Commit(buf []byte) int {
-	// Copy the data to a fresh buffer
+func (ac *AsyncCommitter) Commit(buf []byte) int {
+	// Copy the data to a fresh buffer.
 	bufCopy := make([]byte, len(buf))
 	copy(bufCopy, buf)
 
-	// Commence an asynchronous copy of the buffer to permanent storage.
-	afc.Add(1)
+	// Commence an asynchronous commit on the copy.
+	ac.Add(1)
 	go func() {
-		defer afc.Done()
+		defer ac.Done()
 
-		afc.Committer.Commit(bufCopy)
+		x := ac.Committer.Commit(bufCopy)
+		if x != 0 {
+			// TODO(pwaller): Not sure what to do with bytes left over here..
+			log.Panic("Assertion fail, bytes left over:", x)
+		}
 	}()
 
 	return 0
