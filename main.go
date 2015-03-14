@@ -76,10 +76,8 @@ func main() {
 		log.Fatal("Unable to determine hostname:", err)
 	}
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	afc := &AsyncFileCommitter{&wg, hostname}
+	afc := &AsyncFileCommitter{hostname: hostname}
+	defer afc.Wait()
 
 	var (
 		deadliner = NewDeadliner(Period)

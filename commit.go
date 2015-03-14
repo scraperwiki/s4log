@@ -32,6 +32,7 @@ type Committer interface {
 	Commit(buf []byte) int
 }
 
+// Wraps a Committer and calls Deadliner.Met() when commit is called.
 type DeadlineMetCommitter struct {
 	*Deadliner
 	Committer
@@ -43,7 +44,7 @@ func (dc DeadlineMetCommitter) Commit(buf []byte) int {
 }
 
 type AsyncFileCommitter struct {
-	wg       *sync.WaitGroup
+	sync.WaitGroup
 	hostname string
 }
 
@@ -70,9 +71,9 @@ func (afc *AsyncFileCommitter) Commit(buf []byte) int {
 	copy(newbuf, p)
 
 	// Commence an asynchronous copy of the buffer to permanent storage.
-	afc.wg.Add(1)
+	afc.Add(1)
 	go func() {
-		defer afc.wg.Done()
+		defer afc.Done()
 
 		timestamp := time.Now().Format(time.RFC3339Nano)
 		name := fmt.Sprintf("logs/%s-%s.txt", afc.hostname, timestamp)
