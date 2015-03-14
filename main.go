@@ -88,13 +88,30 @@ var (
 type CommitBuffer struct {
 	mu     sync.Mutex
 	buf, p []byte
+
+	wg        *sync.WaitGroup
+	deadliner *Deadliner
+	hostname  string
 }
 
-func NewCommitBuffer(size int) *CommitBuffer {
+func NewCommitBuffer(
+	size int,
+	wg *sync.WaitGroup,
+	d *Deadliner,
+	h string,
+) *CommitBuffer {
 	buf := make([]byte, size)
-	return &CommitBuffer{
-		buf: buf, p: buf,
-	}
+	return &CommitBuffer{buf: buf, p: buf, wg: wg, deadliner: d, hostname: h}
+}
+
+func (buf *CommitBuffer) Commit() {
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+
+	buf.deadliner.Met()
+
+	n := Commit(buf.wg, buf.hostname, buf.buf[:len(buf.buf)-len(buf.p)])
+	buf.p = buf.buf[n:]
 }
 
 func main() {
@@ -107,24 +124,24 @@ func main() {
 		BufferSize = 10 * kiB        // Size of buffer before flushing
 	)
 
-	var (
-		deadliner = NewDeadliner(Period)
-		done      = make(chan struct{})
-
-		buf = NewCommitBuffer(BufferSize)
-	)
+	defer func() {
+		log.Printf("Exiting, total bytes: %v", n)
+	}()
 
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatal("Unable to determine hostname:", err)
 	}
 
-	defer func() {
-		log.Printf("Exiting, total bytes: %v", n)
-	}()
-
 	var wg sync.WaitGroup
 	defer wg.Wait()
+
+	var (
+		deadliner = NewDeadliner(Period)
+		done      = make(chan struct{})
+
+		buf = NewCommitBuffer(BufferSize, &wg, deadliner, hostname)
+	)
 
 	fill := func(in *poller.FD) error {
 		buf.mu.Lock()
@@ -149,15 +166,7 @@ func main() {
 		return nil
 	}
 
-	commit := func() {
-		buf.mu.Lock()
-		defer buf.mu.Unlock()
-
-		deadliner.Met()
-
-		n := Commit(&wg, hostname, buf.buf[:len(buf.buf)-len(buf.p)])
-		buf.p = buf.buf[n:]
-	}
+	commit := buf.Commit
 
 	go func() {
 		defer close(done)
