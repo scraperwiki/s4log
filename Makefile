@@ -1,8 +1,15 @@
 all: build
 
-build: update-submodules
-	goimports -w *.go
+race: deps
+	go build -race
+
+build: deps
 	go build
+
+deps: update-submodules goimports
+
+goimports: .PHONY
+	goimports -w *.go
 
 update-submodules: .PHONY
 	git submodule update --init
