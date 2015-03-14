@@ -10,6 +10,23 @@ import (
 	"time"
 )
 
+type FileCommitter struct {
+	hostname string
+}
+
+func (fc *FileCommitter) Commit(buf []byte) int {
+	timestamp := time.Now().Format(time.RFC3339Nano)
+	name := fmt.Sprintf("logs/%s-%s.txt", fc.hostname, timestamp)
+	log.Printf("Committing %d bytes to %q", len(buf), name)
+
+	err := WriteBuf(name, buf)
+	if err != nil {
+		log.Printf("Error committing %q: %v", name, err)
+		return 0
+	}
+	return len(buf)
+}
+
 func WriteBuf(name string, data []byte) error {
 	fd, err := os.Create(name)
 	if err != nil {
@@ -43,14 +60,14 @@ func (dc DeadlineMetCommitter) Commit(buf []byte) int {
 	return dc.Committer.Commit(buf)
 }
 
-type AsyncFileCommitter struct {
+type AsyncCommitter struct {
 	sync.WaitGroup
-	hostname string
+	Committer
 }
 
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
-func (afc *AsyncFileCommitter) Commit(buf []byte) int {
+func (afc *AsyncCommitter) Commit(buf []byte) int {
 	if len(buf) == 0 {
 		// Nothing to do
 		return 0
@@ -75,15 +92,7 @@ func (afc *AsyncFileCommitter) Commit(buf []byte) int {
 	go func() {
 		defer afc.Done()
 
-		timestamp := time.Now().Format(time.RFC3339Nano)
-		name := fmt.Sprintf("logs/%s-%s.txt", afc.hostname, timestamp)
-		log.Printf("Committing %d bytes to %q", len(newbuf), name)
-
-		err := WriteBuf(name, newbuf)
-		if err != nil {
-			log.Printf("Error committing %q: %v", name, err)
-			return
-		}
+		afc.Committer.Commit(newbuf)
 	}()
 
 	// Move trailing data to beginning of `buf` and truncate `buf`

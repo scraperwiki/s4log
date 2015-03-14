@@ -67,7 +67,7 @@ func main() {
 		log.Fatal("Unable to determine hostname:", err)
 	}
 
-	afc := &AsyncFileCommitter{hostname: hostname}
+	afc := &AsyncCommitter{Committer: &FileCommitter{hostname}}
 	defer afc.Wait()
 
 	var (
