@@ -11,7 +11,6 @@ import (
 )
 
 func WriteBuf(name string, data []byte) error {
-	log.Println("Create")
 	fd, err := os.Create(name)
 	if err != nil {
 		return fmt.Errorf("failed to os.Create: %v", err)
