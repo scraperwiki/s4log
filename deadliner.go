@@ -5,8 +5,15 @@ import (
 	"time"
 )
 
+// The Deadliner interface provides an abstraction for ensuring an event happens
+// at with the specified frequency.
+//
+// A Deadliner has a .Deadline() method which is the time by which the deadline
+// should be met, and a .Met() function which signals that the deadline was met.
+//
+// These methods are thread safe.
 type Deadliner struct {
-	c      sync.Cond
+	mu     sync.Mutex
 	period time.Duration
 	next   time.Time
 }
@@ -15,53 +22,24 @@ func NewDeadliner(period time.Duration) *Deadliner {
 	d := &Deadliner{
 		period: period,
 		next:   time.Now(),
-		c:      sync.Cond{L: &sync.Mutex{}},
 	}
 	d.Met()
 	return d
 }
 
+// Returns the timestamp of the next deadline.
 func (d *Deadliner) Deadline() time.Time {
-	d.c.L.Lock()
-	defer d.c.L.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.next
 }
 
-// When a deadline is met, a new deadline is issued
+// When a deadline is met, a new deadline is issued.
 func (d *Deadliner) Met() {
-	d.c.L.Lock()
-	defer d.c.L.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	d.c.Broadcast()
 	if -time.Since(d.next) < d.period {
 		d.next = d.next.Add(d.period)
 	}
-}
-
-// Until returns time until the next deadline. May be negative if unmet.
-func (d *Deadliner) Until() time.Duration {
-	d.c.L.Lock()
-	defer d.c.L.Unlock()
-
-	return -time.Since(d.next)
-}
-
-func (d *Deadliner) Passed() bool {
-	d.c.L.Lock()
-	defer d.c.L.Unlock()
-	return d.passed()
-}
-
-// Is this passed?
-func (d *Deadliner) passed() bool {
-	return time.Since(d.next) > 0
-}
-
-// Wait until the deadline has been met
-func (d *Deadliner) Wait() {
-	d.c.L.Lock()
-	for d.passed() {
-		d.c.Wait()
-	}
-	d.c.L.Unlock()
 }
