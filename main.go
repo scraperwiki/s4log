@@ -108,8 +108,9 @@ var (
 func main() {
 
 	const (
-		Period     = 2 * time.Second // Maximum time between commits
-		BufferSize = 1024            // Size of buffer before flushing
+		MiB        = 1 << 20
+		Period     = 5 * time.Minute // Maximum time between commits
+		BufferSize = 10 * MiB        // Size of buffer before flushing
 	)
 
 	var (
