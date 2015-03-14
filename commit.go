@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -89,20 +88,22 @@ func (nlc NewlineCommitter) Commit(buf []byte) int {
 }
 
 // Wraps a Committer and calls it asynchronously with a copy of the buffer.
+// A semaphore ensures that there are not too many in flight at once.
 type AsyncCommitter struct {
-	sync.WaitGroup
+	Semaphore
 	Committer
 }
 
-func (ac *AsyncCommitter) Commit(buf []byte) int {
+func (ac AsyncCommitter) Commit(buf []byte) int {
 	// Copy the data to a fresh buffer.
 	bufCopy := make([]byte, len(buf))
 	copy(bufCopy, buf)
 
 	// Commence an asynchronous commit on the copy.
-	ac.Add(1)
+	ac.Acquire()
+	log.Printf("Commits in flight: %v", len(ac.Semaphore))
 	go func() {
-		defer ac.Done()
+		defer ac.Release()
 
 		x := ac.Committer.Commit(bufCopy)
 		if x != 0 {
@@ -112,4 +113,21 @@ func (ac *AsyncCommitter) Commit(buf []byte) int {
 	}()
 
 	return 0
+}
+
+// Only call this once. Consumes the whole Semaphore.
+func (ac *AsyncCommitter) Wait() {
+	for i := 0; i < cap(ac.Semaphore); i++ {
+		ac.Acquire()
+	}
+}
+
+// A committer which sleeps before committing, for testing AsyncCommitter
+type SlowCommitter struct {
+	Committer
+}
+
+func (sc SlowCommitter) Commit(buf []byte) int {
+	time.Sleep(5 * time.Second)
+	return sc.Committer.Commit(buf)
 }

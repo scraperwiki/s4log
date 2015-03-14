@@ -32,7 +32,9 @@ func main() {
 
 	committer = &FileCommitter{hostname}
 
-	async := &AsyncCommitter{Committer: committer}
+	committer = &SlowCommitter{committer}
+
+	async := AsyncCommitter{NewSemaphore(4), committer}
 	defer async.Wait()
 	committer = async
 
