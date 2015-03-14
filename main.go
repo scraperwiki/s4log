@@ -34,6 +34,10 @@ func Input(args []string) (in io.Reader, wait func()) {
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
 func Commit(wg *sync.WaitGroup, buf []byte) int {
+	if len(buf) == 0 {
+		// Nothing to do
+		return 0
+	}
 	idx := bytes.LastIndex(buf, []byte("\n"))
 
 	var p []byte
