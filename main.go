@@ -13,7 +13,7 @@ import (
 var ErrBufFull = errors.New("Buffer full")
 
 type CommitBuffer struct {
-	// `buf` is a once-initialized buf, and `p` is a cursor into it.
+	// `buf` is a once-initialized buf, and `cursor` points into it.
 	buf, cursor []byte
 
 	Committer
@@ -41,14 +41,26 @@ func (buf *CommitBuffer) Fill(in io.Reader) error {
 	return nil
 }
 
+func (buf *CommitBuffer) Size() int {
+	return len(buf.buf) - len(buf.cursor)
+}
+
 func (buf *CommitBuffer) Commit() {
-	amount := len(buf.buf) - len(buf.cursor)
-	if amount == 0 {
+	if buf.Size() == 0 {
 		// No bytes to commit
 		return
 	}
 
-	n := buf.Committer.Commit(buf.buf[:amount])
+	ready := buf.buf[:buf.Size()]
+	remaining := buf.Committer.Commit(ready)
+	buf.MoveTrailer(remaining)
+}
+
+// Moven bytes of trailing data to beginning of `buf` and truncate `buf`.
+func (buf *CommitBuffer) MoveTrailer(n int) {
+	trailer := buf.buf[buf.Size()-n : buf.Size()]
+
+	copy(buf.buf, trailer)
 	buf.cursor = buf.buf[n:]
 }
 

@@ -85,12 +85,7 @@ func (nlc NewlineCommitter) Commit(buf []byte) int {
 		log.Panic("Assertion fail, bytes left over:", x)
 	}
 
-	// Move trailing data to beginning of `buf` and truncate `buf`
-	copy(buf, buf[len(toNL):])
-	leftOver := len(buf) - len(toNL)
-	buf = buf[:leftOver]
-
-	return leftOver
+	return len(buf) - len(toNL)
 }
 
 // Wraps a Committer and calls it asynchronously with a copy of the buffer.
