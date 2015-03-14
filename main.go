@@ -10,11 +10,9 @@ import (
 
 func main() {
 	const (
-		MiB = 1 << 20
-		kiB = 1 << 10
-		// Period     = 5 * time.Minute // Maximum time between commits
-		Period     = 100 * time.Millisecond // Maximum time between commits
-		BufferSize = 10 * kiB               // Size of buffer before flushing
+		MiB        = 1 << 20
+		Period     = 5 * time.Minute // Maximum time between commits
+		BufferSize = 50 * MiB        // Size of buffer before flushing
 	)
 
 	flag.Parse()
