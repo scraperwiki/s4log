@@ -25,14 +25,14 @@ func NewFlushBuffer(
 	return &FlushBuffer{buf: buf, cursor: buf, Committer: c}
 }
 
-func (buf *FlushBuffer) ReadFrom(in io.Reader) error {
-	n, err := in.Read(buf.cursor)
+func (fb *FlushBuffer) ReadFrom(in io.Reader) error {
+	n, err := in.Read(fb.cursor)
 	if err != nil {
 		return err
 	}
 	// Advance the cursor.
-	buf.cursor = buf.cursor[n:]
-	if len(buf.cursor) == 0 {
+	fb.cursor = fb.cursor[n:]
+	if len(fb.cursor) == 0 {
 		// No space left in buffer.
 		return ErrBufFull
 	}
@@ -40,26 +40,26 @@ func (buf *FlushBuffer) ReadFrom(in io.Reader) error {
 }
 
 // Amount of data currently in the buffer waiting to be flushed.
-func (buf *FlushBuffer) Len() int {
-	return len(buf.buf) - len(buf.cursor)
+func (fb *FlushBuffer) Len() int {
+	return len(fb.buf) - len(fb.cursor)
 }
 
 // Called to flush the buffer to the underlying Committer.
-func (buf *FlushBuffer) Flush() {
-	if buf.Len() == 0 {
+func (fb *FlushBuffer) Flush() {
+	if fb.Len() == 0 {
 		// No bytes to commit.
 		return
 	}
 
-	ready := buf.buf[:buf.Len()]
-	remaining := buf.Committer.Commit(ready)
-	buf.MoveTrailer(remaining)
+	ready := fb.buf[:fb.Len()]
+	remaining := fb.Committer.Commit(ready)
+	fb.MoveTrailer(remaining)
 }
 
 // Move n bytes of trailing data to beginning of `buf` and truncate `buf`.
-func (buf *FlushBuffer) MoveTrailer(n int) {
-	trailer := buf.buf[buf.Len()-n : buf.Len()]
+func (fb *FlushBuffer) MoveTrailer(n int) {
+	trailer := fb.buf[fb.Len()-n : fb.Len()]
 
-	copy(buf.buf, trailer)
-	buf.cursor = buf.buf[n:]
+	copy(fb.buf, trailer)
+	fb.cursor = fb.buf[n:]
 }
