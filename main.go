@@ -31,6 +31,25 @@ func Input(args []string) (in io.Reader, wait func()) {
 	}
 }
 
+func WriteBuf(name string, data []byte) error {
+	fd, err := os.Create(name)
+	if err != nil {
+		log.Printf("Failed to write buf: %v", err)
+		return err
+	}
+	defer fd.Close()
+
+	nw, err := fd.Write(data)
+	if err != nil || nw != len(data) {
+		log.Printf("Error or short write: (%v leftover): %v", len(data)-nw, err)
+		if err != nil {
+			err = io.ErrShortWrite
+		}
+		return err
+	}
+	return err
+}
+
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
 func Commit(wg *sync.WaitGroup, hostname string, buf []byte) int {
@@ -53,12 +72,20 @@ func Commit(wg *sync.WaitGroup, hostname string, buf []byte) int {
 	newbuf := make([]byte, len(p))
 	copy(newbuf, p)
 
-	log.Printf("Commit %d bytes", len(newbuf))
-	fmt.Println(string(newbuf))
 	// Commence an asynchronous copy of the buffer to permanent storage.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
+		timestamp := time.Now().Format(time.RFC3339Nano)
+		name := fmt.Sprintf("logs/%s-%s.txt", hostname, timestamp)
+		log.Printf("Committing %d bytes to %q", len(newbuf), name)
+
+		err := WriteBuf(name, newbuf)
+		if err != nil {
+			log.Printf("Error committing %q: %v", name, err)
+			return
+		}
 
 		nMu.Lock()
 		defer nMu.Unlock()
