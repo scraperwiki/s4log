@@ -15,10 +15,15 @@ func main() {
 		BufferSize = 50 * MiB        // Size of buffer before flushing
 	)
 
+	var (
+		bucket = flag.String("bucket", "", "S3 bucket to push to")
+		prefix = flag.String("prefix", "logs", "log path prefix")
+	)
+
 	flag.Parse()
 
 	if len(flag.Args()) == 0 {
-		log.Fatal("Usage: s4log <command> [args...]")
+		log.Fatal("Usage: s4log -bucket foo -prefix bar <command> [args...]")
 	}
 
 	hostname, err := os.Hostname()
@@ -28,7 +33,9 @@ func main() {
 
 	var committer Committer
 
-	committer = &FileCommitter{hostname}
+	// committer = FileCommitter{hostname}
+	committer = S3Committer{*bucket, *prefix, hostname}
+	// _, _ = bucket, prefix
 
 	async := AsyncCommitter{NewSemaphore(4), committer}
 	defer async.Wait()

@@ -27,7 +27,7 @@ type FileCommitter struct {
 	hostname string
 }
 
-func (fc *FileCommitter) Commit(buf []byte) int {
+func (fc FileCommitter) Commit(buf []byte) int {
 	timestamp := time.Now().Format(time.RFC3339Nano)
 	name := fmt.Sprintf("logs/%s-%s.txt", fc.hostname, timestamp)
 
