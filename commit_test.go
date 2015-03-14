@@ -23,12 +23,12 @@ func TestNewlineCommitter(t *testing.T) {
 	for _, c := range cases {
 		buf := []byte(c.buf)
 		remain := nlc.Commit(buf)
-		after := string(buf[:remain])
+		after := string(buf[len(buf)-remain : len(buf)])
 
 		t.Logf("buf=%q, commit=%q, after=%q", c.buf, committed, after)
 
 		if after != c.remaining {
-			t.Errorf("expected %q after, got %v", c.remaining, after)
+			t.Errorf("expected %q after, got %q", c.remaining, after)
 		}
 
 		if committed != c.committed {
