@@ -43,7 +43,7 @@ func main() {
 	committer = NewlineCommitter{committer}
 
 	var (
-		buf = NewCommitBuffer(BufferSize, committer)
+		buf = NewFlushBuffer(BufferSize, committer)
 
 		in = Input(flag.Args())
 	)
@@ -62,22 +62,17 @@ func main() {
 	}()
 
 	// Do a final commit
-	defer buf.Commit()
+	defer buf.Flush()
 
 	for {
 		err := buf.ReadFrom(in)
 
 		switch err {
-		case nil:
-			continue
-		case poller.ErrTimeout:
-			// The deadline has passed. Issue a commit.
-			buf.Commit()
-			continue
-		case ErrBufFull:
-			// Buffer is full. Issue a commit.
-			buf.Commit()
-			continue
+		case nil: // Everything is fine.
+		case poller.ErrTimeout: // The deadline has passed.
+			buf.Flush()
+		case ErrBufFull: // Buffer is full.
+			buf.Flush()
 		case io.EOF:
 			log.Println("EOF")
 			return
