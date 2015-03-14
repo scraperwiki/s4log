@@ -33,8 +33,7 @@ func Input(args []string) (in io.Reader, wait func()) {
 
 // Commits `buf` to permanent storage, up to the final newline.
 // If there is data following the final newline, it is moved to the beginning.
-// Commit should run very quickly.
-func Commit(buf []byte) int {
+func Commit(wg *sync.WaitGroup, buf []byte) int {
 	idx := bytes.LastIndex(buf, []byte("\n"))
 
 	var p []byte
@@ -52,11 +51,13 @@ func Commit(buf []byte) int {
 
 	log.Printf("Commit %d bytes", len(newbuf))
 	fmt.Println(string(newbuf))
+	// Commence an asynchronous copy of the buffer to permanent storage.
+	wg.Add(1)
 	go func() {
-		// Commence a copy to permanent storage on the fresh buffer
+		defer wg.Done()
+
 		nMu.Lock()
 		defer nMu.Unlock()
-
 		n += len(newbuf)
 	}()
 
@@ -89,6 +90,13 @@ func main() {
 		p   = buf
 	)
 
+	defer func() {
+		log.Printf("Exiting, total bytes: %v", n)
+	}()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	fill := func(in *poller.FD) error {
 		mu.Lock()
 		defer mu.Unlock()
@@ -103,7 +111,7 @@ func main() {
 		}
 		if len(p[n:]) == 0 {
 			// Buffer is full!
-			n := Commit(buf)
+			n := Commit(&wg, buf)
 			p = buf[n:]
 		} else {
 			// Advance p
@@ -118,7 +126,7 @@ func main() {
 
 		deadliner.Met()
 
-		n := Commit(buf[:len(buf)-len(p)])
+		n := Commit(&wg, buf[:len(buf)-len(p)])
 		p = buf[n:]
 	}
 
@@ -151,14 +159,8 @@ func main() {
 		}
 	}()
 
-	defer func() {
-		log.Println("Total bytes", n)
-	}()
-
-	defer func() {
-		log.Println("Final commit")
-		commit()
-	}()
+	// Do a final commit
+	defer commit()
 
 	for {
 		select {
