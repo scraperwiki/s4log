@@ -32,13 +32,9 @@ func NewCommitBuffer(
 	return &CommitBuffer{buf: buf, p: buf, Deadliner: d, Committer: c}
 }
 
-func (buf *CommitBuffer) Fill(in *poller.FD) error {
+func (buf *CommitBuffer) Fill(in io.Reader) error {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
-
-	// Read deadline allows us to have a large buffer but not wait
-	// indefinitely for it to be filled.
-	in.SetReadDeadline(buf.Deadline())
 
 	n, err := in.Read(buf.p)
 	if err != nil {
@@ -99,7 +95,14 @@ func main() {
 
 	go func() {
 		defer close(done)
+
 		in := Input(os.Args[1:])
+
+		in, err = NewDeadlineReader(in.(Fder), deadliner)
+		if err != nil {
+			log.Fatalf("Unable to construct DeadlineReader: %v", err)
+		}
+
 		defer func() {
 			// Note: blocks until Input() is cleaned up
 			//       (e.g, process waited for.)
@@ -109,14 +112,11 @@ func main() {
 			}
 		}()
 
-		fd := int(in.(Fder).Fd())
-		pollFD, err := poller.NewFD(fd)
-		if err != nil {
-			log.Fatalf("Problem whilst polling: %v", err)
-			return
-		}
 		for {
-			err := buf.Fill(pollFD)
+
+			// Read deadline allows us to have a large buffer but not wait
+			// indefinitely for it to be filled.
+			err := buf.Fill(in)
 			switch err {
 			case nil:
 				continue
