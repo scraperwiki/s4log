@@ -1,13 +1,13 @@
 all: test build
 
 test: deps
-	go test -v -race
+	GOPATH=$$PWD/internal/:$$GOPATH go test -v -race
 
 race: deps
 	go build -race
 
 build: deps
-	go build
+	GOPATH=$$PWD/internal/:$$GOPATH go build
 
 deps: update-submodules goimports
 
